@@ -64,7 +64,7 @@ This tool will generate a short, shareable caption for the complete outfit with 
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `outfit` (...): A single outfit suggestion from the previous suggest outfit tool that contains combination (list of items) and styling_notes and the new_item object (with fields title, price, platform, and style_tags) pulled in from search_listings.
+- `outfit` (dict): A single outfit suggestion from the previous suggest outfit tool that contains combination (list of items) and styling_notes and the new_item object (with fields title, price, platform, and style_tags) pulled in from search_listings.
 
 **What it returns:**
 <!-- Describe the return value -->
@@ -95,10 +95,6 @@ A dict containing: verdict (one of "great deal", "fair", or "overpriced"), avg_c
 If fewer than 2 comparable listings exist in the dataset, the agent tells the user there isn't enough data to make a reliable comparison and skips the verdict. If there is another error, fitfindr catches the exception and continues without a price verdict and the user is informed but the rest of the interaction is unaffected.
 ---
 
-## Planning Loop
-
-**How does your agent decide which tool to call next?**
-<!-- Describe the logic your planning loop uses. What does it look at? What conditions change its behavior? How does it know when it's done? -->
 
 ## Planning Loop
 
@@ -151,15 +147,13 @@ Keys tracked in session:
 ---
 
 ## Error Handling
-## Error Handling
-
-For each tool, describe the specific failure mode you're handling and what the agent does in response.
-
 | Tool | Failure mode | Agent response |
 |------|-------------|----------------|
 | search_listings | No results match the query | Sets `session["error"]`, tells the user nothing matched and suggests adjustments (broaden description, raise price limit, remove size filter), returns early without calling further tools |
+| compare_price | Fewer than 2 comparable listings found | Skips the verdict, notes in session that price data was unavailable, and continues to `suggest_outfit` — user is informed in the final output |
 | suggest_outfit | Wardrobe is empty | Pauses the loop, asks the user to describe a few pieces they own, updates the wardrobe with their response, then retries the tool |
 | create_fit_card | Outfit input is missing or incomplete | Falls back to generating a minimal caption using only the `title`, `price`, and `platform` fields from `session["selected_item"]` |
+
 ---
 
 ## Architecture
@@ -264,12 +258,17 @@ No size was specified in the query, so that filter is skipped The tool scans the
 If no listings match, the agent tells the user what to adjust ("Nothing found — try a broader description or higher price limit") and stops. Steps 2 and 3 are not called.
 
 
-**Step 2:**
+**Step 2 (optional):**
+Since the user didn't ask about price or value, `compare_price` is skipped. If the user had asked something like "is this a good deal?", the agent would call `compare_price(item=session["selected_item"])` here and store the verdict in `session["price_verdict"]` before continuing.
+
+
+
+**Step 3:**
 <!-- What happens next? What was returned from step 1? What tool is called now? -->
 Fitfindr takes the top result from Step 1 and calls `suggest_outfit(new_item=<band tee>, wardrobe=<user's wardrobe>)`.
 The wardrobe is populated from what the user described ("baggy jeans, chunky sneakers"). The tool returns a styled combination or suggestion for style like the following: "Pair the faded band tee with your wide-leg jeans and chunky sneakers. Tuck the front hem slightly and roll the sleeves once for a 90s silhouette." If the wardrobe is empty or too sparse to suggest anything, the agent asks the user for more wardrobe details before continuing to Step 3.
 
-**Step 3:**
+**Step 4:**
 <!-- Continue until the full interaction is complete -->
 Now fitfindr calls `create_fit_card(outfit=<suggestion from Step 2>, new_item=<band tee from Step 1>)`.
 It generates a short, shareable caption: "thrifted this faded band tee for $22 and it was made for my wide-legs 🖤 rolled sleeves + slight front tuck = instant 90s"
