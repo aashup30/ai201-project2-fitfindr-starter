@@ -15,12 +15,13 @@ You must have at least 3 tools. The three required tools are listed — add any 
 ### Tool 1: search_listings
 
 **What it does:**
-<!-- Describe what this tool does in 1–2 sentences -->
+
+This tool will search secondhand listings online to find relevant items to display and feed to the next tools. It should be able to feed correct input for later on if no relevant matches can be found.
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `description` (str): ...
-- `size` (str): ...
+- `description` (str): description of the item being searched like "vintage graphic tee" or "oversized denim jacket". Used to match against listing titles, descriptions, and style tags.
+- `size` (str): Clothing size to look for. Examples include: "M", "L", "XS". Matched against the size field in listings. If omitted or None, don't use size as a filter.
 - `max_price` (float): ...
 
 **What it returns:**
@@ -138,12 +139,22 @@ Write out what a full user interaction looks like from start to finish — tool 
 
 **Step 1:**
 <!-- What does the agent do first? Which tool is called? With what input? -->
+The agent calls `search_listings(description="vintage graphic tee", size=None, max_price=30.0)`.
+No size was specified in the query, so that filter is skipped The tool scans the listings from listings.json and returns the top matches ranked by relevance. The output should look like the following "Faded Band Tee — $22, size M, Depop, Good Condition."
+If no listings match, the agent tells the user what to adjust ("Nothing found — try a broader description or higher price limit") and stops. Steps 2 and 3 are not called.
+
 
 **Step 2:**
 <!-- What happens next? What was returned from step 1? What tool is called now? -->
+Fitfindr takes the top result from Step 1 and calls `suggest_outfit(new_item=<band tee>, wardrobe=<user's wardrobe>)`.
+The wardrobe is populated from what the user described ("baggy jeans, chunky sneakers"). The tool returns a styled combination or suggestion for style like the following: "Pair the faded band tee with your wide-leg jeans and chunky sneakers. Tuck the front hem slightly and roll the sleeves once for a 90s silhouette." If the wardrobe is empty or too sparse to suggest anything, the agent asks the user for more wardrobe details before continuing to Step 3.
 
 **Step 3:**
 <!-- Continue until the full interaction is complete -->
+Now fitfindr calls `create_fit_card(outfit=<suggestion from Step 2>, new_item=<band tee from Step 1>)`.
+It generates a short, shareable caption: "thrifted this faded band tee for $22 and it was made for my wide-legs 🖤 rolled sleeves + slight front tuck = instant 90s"
+If description generation fails, the agent falls back to a simple formatted summary of the outfit instead of a styled caption, so the user still gets a result.
 
 **Final output to user:**
 <!-- What does the user actually see at the end? -->
+The matched listing (title, price, platform, condition), the outfit suggestion with styling notes, and the fit card caption ready to copy/share.
