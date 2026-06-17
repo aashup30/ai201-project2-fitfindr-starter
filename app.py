@@ -20,38 +20,67 @@ from utils.data_loader import get_example_wardrobe, get_empty_wardrobe
 
 # ── query handler ─────────────────────────────────────────────────────────────
 
-def handle_query(user_query: str, wardrobe_choice: str) -> tuple[str, str, str]:
+def handle_query(user_query: str, wardrobe_choice: str) -> tuple[str, str, str, str]:
     """
     Called by Gradio when the user submits a query.
 
     Args:
-        user_query:     The text the user typed into the search box.
+        user_query:      The text the user typed into the search box.
         wardrobe_choice: Either "Example wardrobe" or "Empty wardrobe (new user)".
 
     Returns:
-        A tuple of three strings:
-            (listing_text, outfit_suggestion, fit_card)
-        Each string maps to one of the three output panels in the UI.
-
-    TODO:
-        1. Guard against an empty query (return early with an error message).
-        2. Select the wardrobe based on wardrobe_choice.
-        3. Call run_agent() with the query and selected wardrobe.
-        4. If session["error"] is set, return the error in the first panel
-           and empty strings for the other two.
-        5. Otherwise, format session["selected_item"] into a readable listing_text
-           string and return it along with session["outfit_suggestion"] and
-           session["fit_card"].
+        A tuple of four strings:
+            (listing_text, price_verdict, outfit_suggestion, fit_card)
+        Each string maps to one of the four output panels in the UI.
     """
-    # TODO: implement this function
-    return "Agent not yet implemented.", "", ""
+    # Step 1: Guard against empty query
+    if not user_query or not user_query.strip():
+        return "Please enter a search query.", "", "", ""
+
+    # Step 2: Select wardrobe
+    wardrobe = get_example_wardrobe() if wardrobe_choice == "Example wardrobe" else get_empty_wardrobe()
+
+    # Step 3: Run agent
+    session = run_agent(user_query, wardrobe)
+
+    # Step 4: Return error in first panel if something went wrong
+    if session["error"]:
+        return session["error"], "", "", ""
+
+    # Step 5: Format listing
+    item = session["selected_item"]
+    listing_text = (
+        f"{item['title']}\n"
+        f"Price: ${item['price']}\n"
+        f"Platform: {item['platform']}\n"
+        f"Size: {item['size']}\n"
+        f"Condition: {item['condition']}\n"
+        f"Colors: {', '.join(item['colors'])}\n"
+        f"Style: {', '.join(item['style_tags'])}"
+    )
+
+    # Step 6: Format price verdict (may not exist if not triggered)
+    verdict = session.get("price_verdict")
+    if verdict and verdict.get("verdict"):
+        price_text = (
+            f"Verdict: {verdict['verdict'].upper()}\n"
+            f"Avg comparable price: ${verdict['avg_comparable_price']}\n"
+            f"Based on {verdict['comparable_count']} similar listings\n\n"
+            f"{verdict['reasoning']}"
+        )
+    elif verdict:
+        price_text = verdict.get("reasoning", "Not enough data for a price comparison.")
+    else:
+        price_text = "Add 'deal', 'worth it', or 'good price' to your query to get a price comparison."
+
+    return listing_text, price_text, session["outfit_suggestion"], session["fit_card"]
 
 
 # ── interface ─────────────────────────────────────────────────────────────────
 
 EXAMPLE_QUERIES = [
     "vintage graphic tee under $30",
-    "90s track jacket in size M",
+    "90s track jacket in size M — is it a good deal?",
     "flowy midi skirt under $40",
     "black combat boots size 8",
     "designer ballgown size XXS under $5",   # deliberate no-results test
@@ -87,6 +116,13 @@ Describe what you're looking for — include size and price if you want to filte
                 lines=8,
                 interactive=False,
             )
+            price_output = gr.Textbox(
+                label="💰 Price comparison",
+                lines=8,
+                interactive=False,
+            )
+
+        with gr.Row():
             outfit_output = gr.Textbox(
                 label="👗 Outfit idea",
                 lines=8,
@@ -107,12 +143,12 @@ Describe what you're looking for — include size and price if you want to filte
         submit_btn.click(
             fn=handle_query,
             inputs=[query_input, wardrobe_choice],
-            outputs=[listing_output, outfit_output, fitcard_output],
+            outputs=[listing_output, price_output, outfit_output, fitcard_output],
         )
         query_input.submit(
             fn=handle_query,
             inputs=[query_input, wardrobe_choice],
-            outputs=[listing_output, outfit_output, fitcard_output],
+            outputs=[listing_output, price_output, outfit_output, fitcard_output],
         )
 
     return demo

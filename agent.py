@@ -18,7 +18,7 @@ Usage (once implemented):
     print(result["error"])   # None on success
 """
 
-from tools import search_listings, suggest_outfit, create_fit_card
+from tools import search_listings, suggest_outfit, create_fit_card, compare_price
 
 
 # ── session state ─────────────────────────────────────────────────────────────
@@ -92,11 +92,77 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     Before writing code, complete the Planning Loop and State Management sections
     of planning.md — your implementation should match what you described there.
     """
-    # TODO: implement the planning loop
-    session = _new_session(query, wardrobe)
-    session["error"] = "Planning loop not yet implemented."
-    return session
+    import re
 
+    # Step 1: Initialize session
+    session = _new_session(query, wardrobe)
+    print(f"\n{'='*60}")
+    print(f"[AGENT] Starting new session for query: '{query}'")
+    print(f"{'='*60}")
+
+    # Step 2: Parse query for description, size, max_price
+    size_match = re.search(r'\bsize\s+([A-Z0-9/]+)\b', query, re.IGNORECASE)
+    price_match = re.search(r'under\s+\$?(\d+(?:\.\d+)?)', query, re.IGNORECASE)
+    size = size_match.group(1) if size_match else None
+    max_price = float(price_match.group(1)) if price_match else None
+    description = re.sub(
+        r'(size\s+[A-Z0-9/]+|under\s+\$?\d+|\$\d+|looking for|i\'?m looking for)',
+        '', query, flags=re.IGNORECASE
+    ).strip()
+    session["parsed"] = {"description": description, "size": size, "max_price": max_price}
+    print(f"\n[STEP 2] Parsed query:")
+    print(f"  description : {description}")
+    print(f"  size        : {size}")
+    print(f"  max_price   : {max_price}")
+
+    # Step 3: Search listings — exit early if nothing found
+    print(f"\n[STEP 3] Calling search_listings('{description}', size={size}, max_price={max_price})")
+    results = search_listings(description, size=size, max_price=max_price)
+    session["search_results"] = results
+    print(f"  → {len(results)} result(s) found")
+
+    if not results:
+        session["error"] = (
+            "No listings matched your search. Try broadening your description, "
+            "raising your price limit, or removing the size filter."
+        )
+        print(f"  ✗ No results — stopping early. Error set in session.")
+        print(f"  session['fit_card'] = {session['fit_card']} (tools after search were NOT called)")
+        return session
+
+    # Step 4: Select top result
+    session["selected_item"] = results[0]
+    print(f"\n[STEP 4] Selected item stored in session['selected_item']:")
+    print(f"  title : {session['selected_item']['title']}")
+    print(f"  price : ${session['selected_item']['price']}")
+    print(f"  id    : {session['selected_item']['id']}")
+
+    # compare_price — always runs
+    print(f"\n[STEP 4b] Calling compare_price() with session['selected_item'] (id={session['selected_item']['id']})")
+    try:
+        session["price_verdict"] = compare_price(session["selected_item"])
+        print(f"  → verdict: {session['price_verdict']['verdict']}")
+        print(f"  → {session['price_verdict']['reasoning']}")
+    except Exception as e:
+        session["price_verdict"] = None
+        print(f"  ✗ compare_price failed: {e}")
+
+    # Step 5: Suggest outfit
+    print(f"\n[STEP 5] Calling suggest_outfit() with session['selected_item'] → '{session['selected_item']['title']}'")
+    session["outfit_suggestion"] = suggest_outfit(session["selected_item"], wardrobe)
+    print(f"  → outfit stored in session['outfit_suggestion']")
+    print(f"  → preview: {session['outfit_suggestion'][:80]}...")
+
+    # Step 6: Create fit card
+    print(f"\n[STEP 6] Calling create_fit_card() with session['outfit_suggestion'] → passed in directly")
+    session["fit_card"] = create_fit_card(session["outfit_suggestion"], session["selected_item"])
+    print(f"  → fit card stored in session['fit_card']")
+    print(f"  → preview: {session['fit_card'][:80]}...")
+
+    # Step 7: Return session
+    print(f"\n[AGENT] Session complete. Keys set: selected_item, price_verdict, outfit_suggestion, fit_card")
+    print(f"{'='*60}\n")
+    return session
 
 # ── CLI test ──────────────────────────────────────────────────────────────────
 

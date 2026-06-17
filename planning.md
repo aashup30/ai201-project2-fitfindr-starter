@@ -261,8 +261,6 @@ If no listings match, the agent tells the user what to adjust ("Nothing found â€
 **Step 2 (optional):**
 Since the user didn't ask about price or value, `compare_price` is skipped. If the user had asked something like "is this a good deal?", the agent would call `compare_price(item=session["selected_item"])` here and store the verdict in `session["price_verdict"]` before continuing.
 
-
-
 **Step 3:**
 <!-- What happens next? What was returned from step 1? What tool is called now? -->
 Fitfindr takes the top result from Step 1 and calls `suggest_outfit(new_item=<band tee>, wardrobe=<user's wardrobe>)`.

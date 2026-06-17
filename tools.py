@@ -98,6 +98,7 @@ def search_listings(
     scored.sort(key=lambda x: x[1], reverse=True)
 
     return [item for item, _ in scored]
+    return []
 
 
 
@@ -128,8 +129,40 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
 
     Before writing code, fill in the Tool 2 section of planning.md.
     """
-    # Replace this with your implementation
-    return ""
+    client = _get_groq_client()
+
+    items = wardrobe.get("items", [])
+
+    if not items:
+        prompt = (
+            f"I'm considering buying this thrifted item: {new_item['title']}. "
+            f"It's a {new_item['category']} with these style tags: {', '.join(new_item['style_tags'])}. "
+            f"Colors: {', '.join(new_item['colors'])}. "
+            "I don't have my wardrobe handy — give me general styling advice. "
+            "What kinds of pieces pair well with it? What vibe does it suit?"
+        )
+    else:
+        wardrobe_lines = "\n".join(
+            f"- {it['name']} ({it['category']}, {', '.join(it['colors'])}, {it.get('notes', '')})"
+            for it in items
+        )
+        prompt = (
+            f"I'm considering buying this thrifted item: {new_item['title']}. "
+            f"It's a {new_item['category']} with style tags: {', '.join(new_item['style_tags'])}. "
+            f"Colors: {', '.join(new_item['colors'])}.\n\n"
+            f"Here's my current wardrobe:\n{wardrobe_lines}\n\n"
+            "Suggest 1–2 complete outfit combinations using the new item and specific pieces "
+            "from my wardrobe. Include brief styling notes for each."
+        )
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7,
+    )
+
+    return response.choices[0].message.content or ""
+    ##return ""
 
 
 # ── Tool 3: create_fit_card ───────────────────────────────────────────────────
@@ -161,5 +194,83 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
 
     Before writing code, fill in the Tool 3 section of planning.md.
     """
-    # Replace this with your implementation
+    if not outfit or not outfit.strip():
+        return (
+            f"Couldn't generate a caption — outfit description was empty. "
+            f"Here's what we found though: {new_item['title']} for ${new_item['price']} on {new_item['platform']}."
+        )
+
+    client = _get_groq_client()
+
+    prompt = (
+        f"Write a 2–4 sentence Instagram/TikTok caption for this thrifted outfit.\n\n"
+        f"Thrifted item: {new_item['title']}, ${new_item['price']}, found on {new_item['platform']}.\n"
+        f"Outfit: {outfit}\n\n"
+        "Guidelines:\n"
+        "- Sound like a real person posting an OOTD, not a product description\n"
+        "- Mention the item name, price, and platform once each, naturally\n"
+        "- Be specific about the vibe of the outfit\n"
+        "- Keep it casual and shareable"
+    )
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=1.0,
+    )
+
+    return response.choices[0].message.content
     return ""
+
+
+# ── Tool 4: compare_price ─────────────────────────────────────────────────────
+
+def compare_price(item: dict) -> dict:
+    """
+    Estimate whether a listing's price is fair by comparing it against
+    similar items in the dataset.
+
+    Args:
+        item: A listing dict from search_listings containing title, price,
+              category, style_tags, condition, and brand.
+
+    Returns:
+        A dict with keys: verdict, avg_comparable_price, comparable_count,
+        and reasoning. Returns an error dict if fewer than 2 comparables exist.
+    """
+    listings = load_listings()
+
+    comparables = [
+        l for l in listings
+        if l["id"] != item["id"]
+        and l["category"] == item["category"]
+        and any(tag in item["style_tags"] for tag in l["style_tags"])
+    ]
+
+    if len(comparables) < 2:
+        return {
+            "verdict": None,
+            "avg_comparable_price": None,
+            "comparable_count": len(comparables),
+            "reasoning": "Not enough comparable listings to estimate price fairness.",
+        }
+
+    avg = sum(l["price"] for l in comparables) / len(comparables)
+    price = item["price"]
+
+    if price <= avg * 0.8:
+        verdict = "great deal"
+        reasoning = f"At ${price:.2f}, this is well below the average comparable price of ${avg:.2f}."
+    elif price <= avg * 1.1:
+        verdict = "fair"
+        reasoning = f"At ${price:.2f}, this is in line with the average comparable price of ${avg:.2f}."
+    else:
+        verdict = "overpriced"
+        reasoning = f"At ${price:.2f}, this is above the average comparable price of ${avg:.2f}."
+
+    return {
+        "verdict": verdict,
+        "avg_comparable_price": round(avg, 2),
+        "comparable_count": len(comparables),
+        "reasoning": reasoning,
+    }
